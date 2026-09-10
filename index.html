@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="stylesheet" href="css/leaflet.css">
+        <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+        <link rel="stylesheet" href="css/qgis2web.css">
+        <link rel="stylesheet" href="css/fontawesome-all.min.css">
+        <link rel="stylesheet" href="css/leaflet-search.css">
+        <link rel="stylesheet" href="css/filter.css">
+<link rel="stylesheet" href="css/nouislider.min.css">
+        <link rel="stylesheet" href="css/leaflet.photon.css">
+        <link rel="stylesheet" href="css/leaflet-measure.css">
+        <style>
+        html, body, #map {
+            width: 100%;
+            height: 100%;
+            padding: 0;
+            margin: 0;
+        }
+        </style>
+        <title></title>
+    </head>
+    <body>
+        <div id="map">
+        </div>
+        <script src="js/qgis2web_expressions.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/L.Control.Layers.Tree.min.js"></script>
+        <script src="js/leaflet.rotatedMarker.js"></script>
+        <script src="js/leaflet.pattern.js"></script>
+        <script src="js/leaflet-hash.js"></script>
+        <script src="js/Autolinker.min.js"></script>
+        <script src="js/rbush.min.js"></script>
+        <script src="js/labelgun.min.js"></script>
+        <script src="js/labels.js"></script>
+        <script src="js/leaflet.photon.js"></script>
+        <script src="js/leaflet-measure.js"></script>
+        <script src="js/leaflet-search.js"></script>
+        <script src="js/tailDT.js"></script>
+<script src="js/nouislider.min.js"></script>
+<script src="js/wNumb.js"></script>
+        <script src="data/highway_residential_2.js"></script>
+        <script src="data/building_3.js"></script>
+        <script src="data/highway_tertiary_4.js"></script>
+        <script src="data/highway_unclassified_5.js"></script>
+        <script src="data/highway_track_6.js"></script>
+        <script src="data/highway_service_7.js"></script>
+        <script src="data/highway_road_8.js"></script>
+        <script src="data/PR1pr1_9.js"></script>
+        <script>
+        var map = L.map('map', {
+            zoomControl:false, maxZoom:28, minZoom:1
+        }).fitBounds([[52.81869565334485,91.31869971642658],[52.88355098345687,91.47481371226812]]);
+        var hash = new L.Hash(map);
+        map.attributionControl.setPrefix('<a href="https://github.com/qgis2web/qgis2web" target="_blank">qgis2web</a> &middot; <a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; <a href="https://qgis.org">QGIS</a>');
+        var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+        // remove popup's row if "visible-with-data"
+        function removeEmptyRowsFromPopupContent(content, feature) {
+         var tempDiv = document.createElement('div');
+         tempDiv.innerHTML = content;
+         var rows = tempDiv.querySelectorAll('tr');
+         for (var i = 0; i < rows.length; i++) {
+             var td = rows[i].querySelector('td.visible-with-data');
+             var key = td ? td.id : '';
+             if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
+                 rows[i].parentNode.removeChild(rows[i]);
+             }
+         }
+         return tempDiv.innerHTML;
+        }
+        // modify popup if contains media
+        function addClassToPopupIfMedia(content, popup) {
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = content;
+            var imgTd = tempDiv.querySelector('td img');
+            if (imgTd) {
+                var src = imgTd.getAttribute('src');
+                if (/\.(jpg|jpeg|png|gif|bmp|webp|avif)$/i.test(src)) {
+                    popup._contentNode.classList.add('media');
+                    var img = popup._contentNode.querySelector('td img');
+                    if (img) {
+                        // If already loaded (cache), update immediately
+                        if (img.complete && img.naturalHeight > 0) {
+                            popup.update();
+                        } else {
+                            img.addEventListener('load', function() {
+                                popup.update();
+                            });
+                            img.addEventListener('error', function() {
+                                popup.update();
+                            });
+                        }
+                    }
+                } else if (/\.(mp3|wav|ogg|aac)$/i.test(src)) {
+                    var audio = document.createElement('audio');
+                    audio.controls = true;
+                    audio.src = src;
+                    imgTd.parentNode.replaceChild(audio, imgTd);
+                    popup._contentNode.classList.add('media');
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else if (/\.(mp4|webm|ogg|mov)$/i.test(src)) {
+                    var video = document.createElement('video');
+                    video.controls = true;
+                    video.src = src;
+                    video.style.width = "400px";
+                    video.style.height = "300px";
+                    video.style.maxHeight = "60vh";
+                    video.style.maxWidth = "60vw";
+                    imgTd.parentNode.replaceChild(video, imgTd);
+                    popup._contentNode.classList.add('media');
+                    // Aggiorna il popup quando il video carica i metadati
+                    video.addEventListener('loadedmetadata', function() {
+                        popup.update();
+                    });
+                    setTimeout(function() {
+                        popup.setContent(tempDiv.innerHTML);
+                        popup.update();
+                    }, 10);
+                } else {
+                    popup._contentNode.classList.remove('media');
+                }
+            } else {
+                popup._contentNode.classList.remove('media');
+            }
+        }
+        var zoomControl = L.control.zoom({
+            position: 'topleft'
+        }).addTo(map);
+        var measureControl = new L.Control.Measure({
+            position: 'topleft',
+            primaryLengthUnit: 'meters',
+            secondaryLengthUnit: 'kilometers',
+            primaryAreaUnit: 'sqmeters',
+            secondaryAreaUnit: 'hectares'
+        });
+        measureControl.addTo(map);
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].innerHTML = '';
+        document.getElementsByClassName('leaflet-control-measure-toggle')[0].className += ' fas fa-ruler';
+        var bounds_group = new L.featureGroup([]);
+        function setBounds() {
+        }
+        map.createPane('pane_YandexSatellite_0');
+        map.getPane('pane_YandexSatellite_0').style.zIndex = 400;
+        var layer_YandexSatellite_0 = L.tileLayer('https://sat04.maps.yandex.net/tiles?l=sat&x={x}&y={y}&z={z}', {
+            pane: 'pane_YandexSatellite_0',
+            opacity: 1.0,
+            attribution: '',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 18
+        });
+        layer_YandexSatellite_0;
+        map.addLayer(layer_YandexSatellite_0);
+        map.createPane('pane_OSMStandard_1');
+        map.getPane('pane_OSMStandard_1').style.zIndex = 401;
+        var layer_OSMStandard_1 = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            pane: 'pane_OSMStandard_1',
+            opacity: 1.0,
+            attribution: '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors, CC-BY-SA</a>',
+            minZoom: 1,
+            maxZoom: 28,
+            minNativeZoom: 0,
+            maxNativeZoom: 19
+        });
+        layer_OSMStandard_1;
+        map.addLayer(layer_OSMStandard_1);
+        function pop_highway_residential_2(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['highway'] !== null ? autolinker.link(String(feature.properties['highway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['oneway'] !== null ? autolinker.link(String(feature.properties['oneway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_highway_residential_2_0() {
+            return {
+                pane: 'pane_highway_residential_2',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_highway_residential_2');
+        map.getPane('pane_highway_residential_2').style.zIndex = 402;
+        map.getPane('pane_highway_residential_2').style['mix-blend-mode'] = 'normal';
+        var layer_highway_residential_2 = new L.geoJson(json_highway_residential_2, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_highway_residential_2',
+            layerName: 'layer_highway_residential_2',
+            pane: 'pane_highway_residential_2',
+            onEachFeature: pop_highway_residential_2,
+            style: style_highway_residential_2_0,
+        });
+        bounds_group.addLayer(layer_highway_residential_2);
+        map.addLayer(layer_highway_residential_2);
+        function pop_building_3(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['building'] !== null ? autolinker.link(String(feature.properties['building']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['tourism'] !== null ? autolinker.link(String(feature.properties['tourism']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['addr:street'] !== null ? autolinker.link(String(feature.properties['addr:street']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['description'] !== null ? autolinker.link(String(feature.properties['description']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['religion'] !== null ? autolinker.link(String(feature.properties['religion']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['training'] !== null ? autolinker.link(String(feature.properties['training']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['sport'] !== null ? autolinker.link(String(feature.properties['sport']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['leisure'] !== null ? autolinker.link(String(feature.properties['leisure']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['waterway'] !== null ? autolinker.link(String(feature.properties['waterway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['voltage'] !== null ? autolinker.link(String(feature.properties['voltage']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['substation'] !== null ? autolinker.link(String(feature.properties['substation']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['power'] !== null ? autolinker.link(String(feature.properties['power']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['operator'] !== null ? autolinker.link(String(feature.properties['operator']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['location'] !== null ? autolinker.link(String(feature.properties['location']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['gas_insulated'] !== null ? autolinker.link(String(feature.properties['gas_insulated']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['frequency'] !== null ? autolinker.link(String(feature.properties['frequency']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['branch'] !== null ? autolinker.link(String(feature.properties['branch']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['addr:place'] !== null ? autolinker.link(String(feature.properties['addr:place']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name:ru'] !== null ? autolinker.link(String(feature.properties['name:ru']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['amenity'] !== null ? autolinker.link(String(feature.properties['amenity']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['shop'] !== null ? autolinker.link(String(feature.properties['shop']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['building:levels'] !== null ? autolinker.link(String(feature.properties['building:levels']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['type'] !== null ? autolinker.link(String(feature.properties['type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['addr:postcode'] !== null ? autolinker.link(String(feature.properties['addr:postcode']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['addr:housenumber'] !== null ? autolinker.link(String(feature.properties['addr:housenumber']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['addr:city'] !== null ? autolinker.link(String(feature.properties['addr:city']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['address'] !== null ? autolinker.link(String(feature.properties['address']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_building_3_0() {
+            return {
+                pane: 'pane_building_3',
+                opacity: 1,
+                color: 'rgba(35,35,35,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fill: true,
+                fillOpacity: 1,
+                fillColor: 'rgba(229,182,54,1.0)',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_building_3');
+        map.getPane('pane_building_3').style.zIndex = 403;
+        map.getPane('pane_building_3').style['mix-blend-mode'] = 'normal';
+        var layer_building_3 = new L.geoJson(json_building_3, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_building_3',
+            layerName: 'layer_building_3',
+            pane: 'pane_building_3',
+            onEachFeature: pop_building_3,
+            style: style_building_3_0,
+        });
+        bounds_group.addLayer(layer_building_3);
+        map.addLayer(layer_building_3);
+        function pop_highway_tertiary_4(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['highway'] !== null ? autolinker.link(String(feature.properties['highway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['ref'] !== null ? autolinker.link(String(feature.properties['ref']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['old_ref'] !== null ? autolinker.link(String(feature.properties['old_ref']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['surface'] !== null ? autolinker.link(String(feature.properties['surface']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['layer'] !== null ? autolinker.link(String(feature.properties['layer']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bridge'] !== null ? autolinker.link(String(feature.properties['bridge']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_highway_tertiary_4_0() {
+            return {
+                pane: 'pane_highway_tertiary_4',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_highway_tertiary_4');
+        map.getPane('pane_highway_tertiary_4').style.zIndex = 404;
+        map.getPane('pane_highway_tertiary_4').style['mix-blend-mode'] = 'normal';
+        var layer_highway_tertiary_4 = new L.geoJson(json_highway_tertiary_4, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_highway_tertiary_4',
+            layerName: 'layer_highway_tertiary_4',
+            pane: 'pane_highway_tertiary_4',
+            onEachFeature: pop_highway_tertiary_4,
+            style: style_highway_tertiary_4_0,
+        });
+        bounds_group.addLayer(layer_highway_tertiary_4);
+        map.addLayer(layer_highway_tertiary_4);
+        function pop_highway_unclassified_5(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['highway'] !== null ? autolinker.link(String(feature.properties['highway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['ford'] !== null ? autolinker.link(String(feature.properties['ford']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['depth'] !== null ? autolinker.link(String(feature.properties['depth']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['smoothness'] !== null ? autolinker.link(String(feature.properties['smoothness']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['surface'] !== null ? autolinker.link(String(feature.properties['surface']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['layer'] !== null ? autolinker.link(String(feature.properties['layer']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['lanes'] !== null ? autolinker.link(String(feature.properties['lanes']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['foot'] !== null ? autolinker.link(String(feature.properties['foot']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bridge'] !== null ? autolinker.link(String(feature.properties['bridge']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bicycle'] !== null ? autolinker.link(String(feature.properties['bicycle']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['access'] !== null ? autolinker.link(String(feature.properties['access']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_highway_unclassified_5_0() {
+            return {
+                pane: 'pane_highway_unclassified_5',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_highway_unclassified_5');
+        map.getPane('pane_highway_unclassified_5').style.zIndex = 405;
+        map.getPane('pane_highway_unclassified_5').style['mix-blend-mode'] = 'normal';
+        var layer_highway_unclassified_5 = new L.geoJson(json_highway_unclassified_5, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_highway_unclassified_5',
+            layerName: 'layer_highway_unclassified_5',
+            pane: 'pane_highway_unclassified_5',
+            onEachFeature: pop_highway_unclassified_5,
+            style: style_highway_unclassified_5_0,
+        });
+        bounds_group.addLayer(layer_highway_unclassified_5);
+        map.addLayer(layer_highway_unclassified_5);
+        function pop_highway_track_6(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['highway'] !== null ? autolinker.link(String(feature.properties['highway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['surface'] !== null ? autolinker.link(String(feature.properties['surface']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['foot'] !== null ? autolinker.link(String(feature.properties['foot']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bicycle'] !== null ? autolinker.link(String(feature.properties['bicycle']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_highway_track_6_0() {
+            return {
+                pane: 'pane_highway_track_6',
+                opacity: 1,
+                color: 'rgba(157,75,59,1.0)',
+                dashArray: '4.0,2.0,1.0,2.0',
+                lineCap: 'square',
+                lineJoin: 'bevel',
+                weight: 1.0,
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_highway_track_6');
+        map.getPane('pane_highway_track_6').style.zIndex = 406;
+        map.getPane('pane_highway_track_6').style['mix-blend-mode'] = 'normal';
+        var layer_highway_track_6 = new L.geoJson(json_highway_track_6, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_highway_track_6',
+            layerName: 'layer_highway_track_6',
+            pane: 'pane_highway_track_6',
+            onEachFeature: pop_highway_track_6,
+            style: style_highway_track_6_0,
+        });
+        bounds_group.addLayer(layer_highway_track_6);
+        map.addLayer(layer_highway_track_6);
+        function pop_highway_service_7(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['highway'] !== null ? autolinker.link(String(feature.properties['highway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['oneway'] !== null ? autolinker.link(String(feature.properties['oneway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['bridge'] !== null ? autolinker.link(String(feature.properties['bridge']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['layer'] !== null ? autolinker.link(String(feature.properties['layer']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['surface'] !== null ? autolinker.link(String(feature.properties['surface']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['railway'] !== null ? autolinker.link(String(feature.properties['railway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['foot'] !== null ? autolinker.link(String(feature.properties['foot']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['service'] !== null ? autolinker.link(String(feature.properties['service']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['tunnel'] !== null ? autolinker.link(String(feature.properties['tunnel']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_highway_service_7_0() {
+            return {
+                pane: 'pane_highway_service_7',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_highway_service_7');
+        map.getPane('pane_highway_service_7').style.zIndex = 407;
+        map.getPane('pane_highway_service_7').style['mix-blend-mode'] = 'normal';
+        var layer_highway_service_7 = new L.geoJson(json_highway_service_7, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_highway_service_7',
+            layerName: 'layer_highway_service_7',
+            pane: 'pane_highway_service_7',
+            onEachFeature: pop_highway_service_7,
+            style: style_highway_service_7_0,
+        });
+        bounds_group.addLayer(layer_highway_service_7);
+        map.addLayer(layer_highway_service_7);
+        function pop_highway_road_8(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['full_id'] !== null ? autolinker.link(String(feature.properties['full_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_id'] !== null ? autolinker.link(String(feature.properties['osm_id']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['osm_type'] !== null ? autolinker.link(String(feature.properties['osm_type']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['highway'] !== null ? autolinker.link(String(feature.properties['highway']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_highway_road_8_0() {
+            return {
+                pane: 'pane_highway_road_8',
+                interactive: true,
+            }
+        }
+        map.createPane('pane_highway_road_8');
+        map.getPane('pane_highway_road_8').style.zIndex = 408;
+        map.getPane('pane_highway_road_8').style['mix-blend-mode'] = 'normal';
+        var layer_highway_road_8 = new L.geoJson(json_highway_road_8, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_highway_road_8',
+            layerName: 'layer_highway_road_8',
+            pane: 'pane_highway_road_8',
+            onEachFeature: pop_highway_road_8,
+            style: style_highway_road_8_0,
+        });
+        bounds_group.addLayer(layer_highway_road_8);
+        map.addLayer(layer_highway_road_8);
+        function pop_PR1pr1_9(feature, layer) {
+            var popupContent = '<table>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                    <tr>\
+                        <td colspan="2">' + (feature.properties['name'] !== null ? autolinker.link(String(feature.properties['name']).replace(/'/g, '\'').toLocaleString()) : '') + '</td>\
+                    </tr>\
+                </table>';
+            var content = removeEmptyRowsFromPopupContent(popupContent, feature);
+			layer.on('popupopen', function(e) {
+				addClassToPopupIfMedia(content, e.popup);
+			});
+			layer.bindPopup(content, { maxHeight: 400 });
+        }
+
+        function style_PR1pr1_9_0() {
+            return {
+                pane: 'pane_PR1pr1_9',
+                opacity: 1,
+                color: 'rgba(255,0,0,1.0)',
+                dashArray: '',
+                lineCap: 'butt',
+                lineJoin: 'miter',
+                weight: 1.0, 
+                fillOpacity: 0,
+                interactive: true,
+            }
+        }
+        map.createPane('pane_PR1pr1_9');
+        map.getPane('pane_PR1pr1_9').style.zIndex = 409;
+        map.getPane('pane_PR1pr1_9').style['mix-blend-mode'] = 'normal';
+        var layer_PR1pr1_9 = new L.geoJson(json_PR1pr1_9, {
+            attribution: '',
+            interactive: true,
+            dataVar: 'json_PR1pr1_9',
+            layerName: 'layer_PR1pr1_9',
+            pane: 'pane_PR1pr1_9',
+            onEachFeature: pop_PR1pr1_9,
+            style: style_PR1pr1_9_0,
+        });
+        bounds_group.addLayer(layer_PR1pr1_9);
+        map.addLayer(layer_PR1pr1_9);
+        var overlaysTree = [
+            {label: '<img src="legend/PR1pr1_9.png" /> PR1 — pr1', layer: layer_PR1pr1_9},
+            {label: '<img src="legend/highway_road_8.png" /> highway_road', layer: layer_highway_road_8},
+            {label: '<img src="legend/highway_service_7.png" /> highway_service', layer: layer_highway_service_7},
+            {label: '<img src="legend/highway_track_6.png" /> highway_track', layer: layer_highway_track_6},
+            {label: '<img src="legend/highway_unclassified_5.png" /> highway_unclassified', layer: layer_highway_unclassified_5},
+            {label: '<img src="legend/highway_tertiary_4.png" /> highway_tertiary', layer: layer_highway_tertiary_4},
+            {label: '<img src="legend/building_3.png" /> building', layer: layer_building_3},
+            {label: '<img src="legend/highway_residential_2.png" /> highway_residential', layer: layer_highway_residential_2},
+            {label: "OSM Standard", layer: layer_OSMStandard_1},
+            {label: "Yandex Satellite", layer: layer_YandexSatellite_0},]
+        var lay = L.control.layers.tree(null, overlaysTree,{
+            //namedToggle: true,
+            //selectorBack: false,
+            //closedSymbol: '&#8862; &#x1f5c0;',
+            //openedSymbol: '&#8863; &#x1f5c1;',
+            //collapseAll: 'Collapse all',
+            //expandAll: 'Expand all',
+            collapsed: true,
+        });
+        lay.addTo(map);
+        setBounds();
+        map.addControl(new L.Control.Search({
+            layer: layer_building_3,
+            initial: false,
+            hideMarkerOnCollapse: true,
+            propertyName: 'address'}));
+        if (typeof url === 'undefined') {
+            document.getElementsByClassName('search-button')[0].className += ' fa fa-binoculars';
+        } else {
+            document.getElementsByClassName('search-button')[1].className += ' fa fa-binoculars';
+        }
+        var mapDiv = document.getElementById('map');
+        var row = document.createElement('div');
+        row.className="row";
+        row.id="all";
+        row.style.height = "100%";
+        var col1 = document.createElement('div');
+        col1.className="col9";
+        col1.id = "mapWindow";
+        col1.style.height = "99%";
+        col1.style.width = "80%";
+        col1.style.display = "inline-block";
+        var col2 = document.createElement('div');
+        col2.className="col3";
+        col2.id = "menu";
+        col2.style.display = "inline-block";
+        mapDiv.parentNode.insertBefore(row, mapDiv);
+        document.getElementById("all").appendChild(col1);
+        document.getElementById("all").appendChild(col2);
+        col1.appendChild(mapDiv)
+        var Filters = {"address": "str"};
+        function filterFunc() {
+          map.eachLayer(function(lyr){
+          if ("options" in lyr && "dataVar" in lyr["options"]){
+            features = this[lyr["options"]["dataVar"]].features.slice(0);
+            try{
+              for (key in Filters){
+                keyS = key.replace(/[^a-zA-Z0-9_]/g, "")
+                if (Filters[key] == "str" || Filters[key] == "bool"){
+                  var selection = [];
+                  var options = document.getElementById("sel_" + keyS).options
+                  for (var i=0; i < options.length; i++) {
+                    if (options[i].selected) selection.push(options[i].value);
+                  }
+                    try{
+                      if (key in features[0].properties){
+                        for (i = features.length - 1;
+                          i >= 0; --i){
+                          if (selection.indexOf(
+                          features[i].properties[key])<0
+                          && selection.length>0) {
+                          features.splice(i,1);
+                          }
+                        }
+                      }
+                    } catch(err){
+                  }
+                }
+                if (Filters[key] == "int"){
+                  sliderVals =  document.getElementById(
+                    "div_" + keyS).noUiSlider.get();
+                  try{
+                    if (key in features[0].properties){
+                    for (i = features.length - 1; i >= 0; --i){
+                      if (parseInt(features[i].properties[key])
+                          < sliderVals[0]
+                          || parseInt(features[i].properties[key])
+                          > sliderVals[1]){
+                            features.splice(i,1);
+                          }
+                        }
+                      }
+                    } catch(err){
+                    }
+                  }
+                if (Filters[key] == "real"){
+                  sliderVals =  document.getElementById(
+                    "div_" + keyS).noUiSlider.get();
+                  try{
+                    if (key in features[0].properties){
+                    for (i = features.length - 1; i >= 0; --i){
+                      if (features[i].properties[key]
+                          < sliderVals[0]
+                          || features[i].properties[key]
+                          > sliderVals[1]){
+                            features.splice(i,1);
+                          }
+                        }
+                      }
+                    } catch(err){
+                    }
+                  }
+                if (Filters[key] == "date"
+                  || Filters[key] == "datetime"
+                  || Filters[key] == "time"){
+                  try{
+                    if (key in features[0].properties){
+                      HTMLkey = key.replace(/[&\\/\\#,+()$~%.'":*?<>{} ]/g, '');
+                      startdate = document.getElementById("dat_" +
+                        HTMLkey + "_date1").value.replace(" ", "T");
+                      enddate = document.getElementById("dat_" +
+                        HTMLkey + "_date2").value.replace(" ", "T");
+                      for (i = features.length - 1; i >= 0; --i){
+                        if (features[i].properties[key] < startdate
+                          || features[i].properties[key] > enddate){
+                          features.splice(i,1);
+                        }
+                      }
+                    }
+                  } catch(err){
+                  }
+                }
+              }
+            } catch(err){
+            }
+          this[lyr["options"]["layerName"]].clearLayers();
+          this[lyr["options"]["layerName"]].addData(features);
+          }
+          })
+        }
+            document.getElementById("menu").appendChild(
+                document.createElement("div"));
+            var div_address = document.createElement('div');
+            div_address.id = "div_address";
+            div_address.className= "filterselect";
+            document.getElementById("menu").appendChild(div_address);
+            sel_address = document.createElement('select');
+            sel_address.multiple = true;
+            sel_address.size = 10;
+            sel_address.id = "sel_address";
+            var address_options_str = "<option value='' unselected></option>";
+            sel_address.onchange = function(){filterFunc()};
+            address_options_str  += '<option value=" "> </option>';
+            address_options_str  += '<option value=" 1"> 1</option>';
+            address_options_str  += '<option value=" 10"> 10</option>';
+            address_options_str  += '<option value=" 101"> 101</option>';
+            address_options_str  += '<option value=" 102"> 102</option>';
+            address_options_str  += '<option value=" 103"> 103</option>';
+            address_options_str  += '<option value=" 104Д"> 104Д</option>';
+            address_options_str  += '<option value=" 104Ж"> 104Ж</option>';
+            address_options_str  += '<option value=" 105"> 105</option>';
+            address_options_str  += '<option value=" 105А"> 105А</option>';
+            address_options_str  += '<option value=" 105Б"> 105Б</option>';
+            address_options_str  += '<option value=" 106"> 106</option>';
+            address_options_str  += '<option value=" 107"> 107</option>';
+            address_options_str  += '<option value=" 10А"> 10А</option>';
+            address_options_str  += '<option value=" 11"> 11</option>';
+            address_options_str  += '<option value=" 11А"> 11А</option>';
+            address_options_str  += '<option value=" 11Б"> 11Б</option>';
+            address_options_str  += '<option value=" 12"> 12</option>';
+            address_options_str  += '<option value=" 13"> 13</option>';
+            address_options_str  += '<option value=" 14"> 14</option>';
+            address_options_str  += '<option value=" 14А"> 14А</option>';
+            address_options_str  += '<option value=" 15"> 15</option>';
+            address_options_str  += '<option value=" 16"> 16</option>';
+            address_options_str  += '<option value=" 16А"> 16А</option>';
+            address_options_str  += '<option value=" 16Б"> 16Б</option>';
+            address_options_str  += '<option value=" 16В"> 16В</option>';
+            address_options_str  += '<option value=" 17"> 17</option>';
+            address_options_str  += '<option value=" 17А"> 17А</option>';
+            address_options_str  += '<option value=" 18"> 18</option>';
+            address_options_str  += '<option value=" 19"> 19</option>';
+            address_options_str  += '<option value=" 2"> 2</option>';
+            address_options_str  += '<option value=" 20"> 20</option>';
+            address_options_str  += '<option value=" 21"> 21</option>';
+            address_options_str  += '<option value=" 22"> 22</option>';
+            address_options_str  += '<option value=" 23"> 23</option>';
+            address_options_str  += '<option value=" 24"> 24</option>';
+            address_options_str  += '<option value=" 25"> 25</option>';
+            address_options_str  += '<option value=" 26"> 26</option>';
+            address_options_str  += '<option value=" 27"> 27</option>';
+            address_options_str  += '<option value=" 28"> 28</option>';
+            address_options_str  += '<option value=" 3"> 3</option>';
+            address_options_str  += '<option value=" 30"> 30</option>';
+            address_options_str  += '<option value=" 31"> 31</option>';
+            address_options_str  += '<option value=" 32"> 32</option>';
+            address_options_str  += '<option value=" 33"> 33</option>';
+            address_options_str  += '<option value=" 33А"> 33А</option>';
+            address_options_str  += '<option value=" 34"> 34</option>';
+            address_options_str  += '<option value=" 35"> 35</option>';
+            address_options_str  += '<option value=" 35В"> 35В</option>';
+            address_options_str  += '<option value=" 37"> 37</option>';
+            address_options_str  += '<option value=" 38"> 38</option>';
+            address_options_str  += '<option value=" 39"> 39</option>';
+            address_options_str  += '<option value=" 39А"> 39А</option>';
+            address_options_str  += '<option value=" 39В"> 39В</option>';
+            address_options_str  += '<option value=" 4"> 4</option>';
+            address_options_str  += '<option value=" 40"> 40</option>';
+            address_options_str  += '<option value=" 41"> 41</option>';
+            address_options_str  += '<option value=" 41А"> 41А</option>';
+            address_options_str  += '<option value=" 42"> 42</option>';
+            address_options_str  += '<option value=" 43"> 43</option>';
+            address_options_str  += '<option value=" 44"> 44</option>';
+            address_options_str  += '<option value=" 45"> 45</option>';
+            address_options_str  += '<option value=" 46"> 46</option>';
+            address_options_str  += '<option value=" 47"> 47</option>';
+            address_options_str  += '<option value=" 48"> 48</option>';
+            address_options_str  += '<option value=" 48Б"> 48Б</option>';
+            address_options_str  += '<option value=" 48Г"> 48Г</option>';
+            address_options_str  += '<option value=" 48Д"> 48Д</option>';
+            address_options_str  += '<option value=" 48И"> 48И</option>';
+            address_options_str  += '<option value=" 48Р"> 48Р</option>';
+            address_options_str  += '<option value=" 49"> 49</option>';
+            address_options_str  += '<option value=" 5"> 5</option>';
+            address_options_str  += '<option value=" 50"> 50</option>';
+            address_options_str  += '<option value=" 51"> 51</option>';
+            address_options_str  += '<option value=" 53"> 53</option>';
+            address_options_str  += '<option value=" 54"> 54</option>';
+            address_options_str  += '<option value=" 55"> 55</option>';
+            address_options_str  += '<option value=" 56"> 56</option>';
+            address_options_str  += '<option value=" 57"> 57</option>';
+            address_options_str  += '<option value=" 58"> 58</option>';
+            address_options_str  += '<option value=" 59"> 59</option>';
+            address_options_str  += '<option value=" 6"> 6</option>';
+            address_options_str  += '<option value=" 60"> 60</option>';
+            address_options_str  += '<option value=" 60А"> 60А</option>';
+            address_options_str  += '<option value=" 63"> 63</option>';
+            address_options_str  += '<option value=" 64"> 64</option>';
+            address_options_str  += '<option value=" 64А"> 64А</option>';
+            address_options_str  += '<option value=" 65"> 65</option>';
+            address_options_str  += '<option value=" 66"> 66</option>';
+            address_options_str  += '<option value=" 67"> 67</option>';
+            address_options_str  += '<option value=" 68"> 68</option>';
+            address_options_str  += '<option value=" 69"> 69</option>';
+            address_options_str  += '<option value=" 7"> 7</option>';
+            address_options_str  += '<option value=" 70"> 70</option>';
+            address_options_str  += '<option value=" 71"> 71</option>';
+            address_options_str  += '<option value=" 71А"> 71А</option>';
+            address_options_str  += '<option value=" 72"> 72</option>';
+            address_options_str  += '<option value=" 72А"> 72А</option>';
+            address_options_str  += '<option value=" 73"> 73</option>';
+            address_options_str  += '<option value=" 74"> 74</option>';
+            address_options_str  += '<option value=" 75"> 75</option>';
+            address_options_str  += '<option value=" 76"> 76</option>';
+            address_options_str  += '<option value=" 77"> 77</option>';
+            address_options_str  += '<option value=" 78"> 78</option>';
+            address_options_str  += '<option value=" 79"> 79</option>';
+            address_options_str  += '<option value=" 7Б"> 7Б</option>';
+            address_options_str  += '<option value=" 8"> 8</option>';
+            address_options_str  += '<option value=" 80"> 80</option>';
+            address_options_str  += '<option value=" 81"> 81</option>';
+            address_options_str  += '<option value=" 82"> 82</option>';
+            address_options_str  += '<option value=" 83"> 83</option>';
+            address_options_str  += '<option value=" 84"> 84</option>';
+            address_options_str  += '<option value=" 87"> 87</option>';
+            address_options_str  += '<option value=" 88"> 88</option>';
+            address_options_str  += '<option value=" 89"> 89</option>';
+            address_options_str  += '<option value=" 8А"> 8А</option>';
+            address_options_str  += '<option value=" 8Б"> 8Б</option>';
+            address_options_str  += '<option value=" 9"> 9</option>';
+            address_options_str  += '<option value=" 90"> 90</option>';
+            address_options_str  += '<option value=" 91"> 91</option>';
+            address_options_str  += '<option value=" 92"> 92</option>';
+            address_options_str  += '<option value=" 93"> 93</option>';
+            address_options_str  += '<option value=" 93Б"> 93Б</option>';
+            address_options_str  += '<option value=" 95"> 95</option>';
+            address_options_str  += '<option value=" 96"> 96</option>';
+            address_options_str  += '<option value=" 97"> 97</option>';
+            address_options_str  += '<option value=" 98"> 98</option>';
+            address_options_str  += '<option value=" 98/1"> 98/1</option>';
+            address_options_str  += '<option value=" 9А"> 9А</option>';
+            address_options_str  += '<option value="Лесной переулок 1">Лесной переулок 1</option>';
+            address_options_str  += '<option value="Лесной переулок 2">Лесной переулок 2</option>';
+            address_options_str  += '<option value="Лесной переулок 3">Лесной переулок 3</option>';
+            address_options_str  += '<option value="Лесной переулок 4">Лесной переулок 4</option>';
+            address_options_str  += '<option value="Лесной переулок 6">Лесной переулок 6</option>';
+            address_options_str  += '<option value="Набережная улица 13">Набережная улица 13</option>';
+            address_options_str  += '<option value="Набережная улица 15">Набережная улица 15</option>';
+            address_options_str  += '<option value="Набережная улица 17">Набережная улица 17</option>';
+            address_options_str  += '<option value="Саянская улица 1">Саянская улица 1</option>';
+            address_options_str  += '<option value="Саянская улица 10">Саянская улица 10</option>';
+            address_options_str  += '<option value="Саянская улица 11">Саянская улица 11</option>';
+            address_options_str  += '<option value="Саянская улица 12">Саянская улица 12</option>';
+            address_options_str  += '<option value="Саянская улица 13">Саянская улица 13</option>';
+            address_options_str  += '<option value="Саянская улица 14">Саянская улица 14</option>';
+            address_options_str  += '<option value="Саянская улица 16">Саянская улица 16</option>';
+            address_options_str  += '<option value="Саянская улица 18">Саянская улица 18</option>';
+            address_options_str  += '<option value="Саянская улица 2">Саянская улица 2</option>';
+            address_options_str  += '<option value="Саянская улица 20">Саянская улица 20</option>';
+            address_options_str  += '<option value="Саянская улица 22">Саянская улица 22</option>';
+            address_options_str  += '<option value="Саянская улица 3">Саянская улица 3</option>';
+            address_options_str  += '<option value="Саянская улица 4">Саянская улица 4</option>';
+            address_options_str  += '<option value="Саянская улица 5">Саянская улица 5</option>';
+            address_options_str  += '<option value="Саянская улица 6">Саянская улица 6</option>';
+            address_options_str  += '<option value="Саянская улица 7">Саянская улица 7</option>';
+            address_options_str  += '<option value="Саянская улица 8">Саянская улица 8</option>';
+            address_options_str  += '<option value="Саянская улица 9">Саянская улица 9</option>';
+            address_options_str  += '<option value="Солнечный переулок 1">Солнечный переулок 1</option>';
+            address_options_str  += '<option value="Солнечный переулок 2">Солнечный переулок 2</option>';
+            address_options_str  += '<option value="Солнечный переулок 3">Солнечный переулок 3</option>';
+            address_options_str  += '<option value="улица Гидростроителей 10">улица Гидростроителей 10</option>';
+            address_options_str  += '<option value="улица Гидростроителей 4">улица Гидростроителей 4</option>';
+            address_options_str  += '<option value="улица Гидростроителей 5">улица Гидростроителей 5</option>';
+            address_options_str  += '<option value="улица Гидростроителей 6">улица Гидростроителей 6</option>';
+            address_options_str  += '<option value="улица Гидростроителей 7">улица Гидростроителей 7</option>';
+            address_options_str  += '<option value="улица Гидростроителей 9">улица Гидростроителей 9</option>';
+            address_options_str  += '<option value="улица Изыскателей 10">улица Изыскателей 10</option>';
+            address_options_str  += '<option value="улица Изыскателей 12">улица Изыскателей 12</option>';
+            address_options_str  += '<option value="улица Изыскателей 2">улица Изыскателей 2</option>';
+            address_options_str  += '<option value="улица Изыскателей 3">улица Изыскателей 3</option>';
+            address_options_str  += '<option value="улица Изыскателей 5">улица Изыскателей 5</option>';
+            address_options_str  += '<option value="улица Изыскателей 6Б">улица Изыскателей 6Б</option>';
+            address_options_str  += '<option value="улица Изыскателей 7">улица Изыскателей 7</option>';
+            address_options_str  += '<option value="улица Изыскателей 8">улица Изыскателей 8</option>';
+            address_options_str  += '<option value="улица Изыскателей 9">улица Изыскателей 9</option>';
+            address_options_str  += '<option value="улица Энергетиков 1">улица Энергетиков 1</option>';
+            address_options_str  += '<option value="улица Энергетиков 10">улица Энергетиков 10</option>';
+            address_options_str  += '<option value="улица Энергетиков 11">улица Энергетиков 11</option>';
+            address_options_str  += '<option value="улица Энергетиков 12">улица Энергетиков 12</option>';
+            address_options_str  += '<option value="улица Энергетиков 3">улица Энергетиков 3</option>';
+            address_options_str  += '<option value="улица Энергетиков 4">улица Энергетиков 4</option>';
+            address_options_str  += '<option value="улица Энергетиков 5">улица Энергетиков 5</option>';
+            address_options_str  += '<option value="улица Энергетиков 6">улица Энергетиков 6</option>';
+            address_options_str  += '<option value="улица Энергетиков 7">улица Энергетиков 7</option>';
+            address_options_str  += '<option value="улица Энергетиков 8">улица Энергетиков 8</option>';
+            address_options_str  += '<option value="улица Энергетиков 9">улица Энергетиков 9</option>';
+            sel_address.innerHTML = address_options_str;
+            div_address.appendChild(sel_address);
+            var lab_address = document.createElement('div');
+            lab_address.innerHTML = 'address';
+            lab_address.className = 'filterlabel';
+            div_address.appendChild(lab_address);
+            var reset_address = document.createElement('div');
+            reset_address.innerHTML = 'clear filter';
+            reset_address.className = 'filterlabel';
+            reset_address.onclick = function() {
+                var options = document.getElementById("sel_address").options;
+                for (var i=0; i < options.length; i++) {
+                    options[i].selected = false;
+                }
+                filterFunc();
+            };
+            div_address.appendChild(reset_address);
+        </script>        
+    </body>
+</html>
